@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    container_name: bandhanbd-server
+    ports:
+      - "5500:5500"
+    env_file:
+      - .env
+    restart: unless-stopped
