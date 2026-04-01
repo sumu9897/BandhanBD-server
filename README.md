@@ -7,6 +7,7 @@
 [![MongoDB](https://img.shields.io/badge/MongoDB-6.0-47A248?logo=mongodb)](https://mongodb.com)
 [![JWT](https://img.shields.io/badge/JWT-Auth-000000?logo=jsonwebtokens)](https://jwt.io)
 [![Stripe](https://img.shields.io/badge/Stripe-Payments-635BFF?logo=stripe)](https://stripe.com)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)](https://docker.com)
 
 ---
 
@@ -30,6 +31,7 @@
 - **Admin Dashboard Stats** — Parallel aggregation queries for KPI data
 - **Success Stories** — Sorted by marriage date descending
 - **User Search** — Server-side regex search on username for admin panel
+- **Docker Support** — Containerised with a minimal Alpine image for consistent deployments
 
 ---
 
@@ -44,6 +46,7 @@
 | Payments | Stripe Node.js SDK |
 | Environment | dotenv |
 | Dev Server | nodemon |
+| Containerisation | Docker + Docker Compose |
 | Deployment | Vercel |
 
 ---
@@ -52,10 +55,13 @@
 
 ```
 bandhanbd-server/
-├── index.js          # All routes, middleware, and DB logic
+├── index.js              # All routes, middleware, and DB logic
 ├── package.json
-├── .env.example      # Environment variable template
-└── .env              # Your local secrets (git-ignored)
+├── Dockerfile            # Production container image (node:18-alpine)
+├── docker-compose.yml    # Single-service Compose configuration
+├── .dockerignore         # Files excluded from the Docker build context
+├── .env.example          # Environment variable template
+└── .env                  # Your local secrets (git-ignored)
 ```
 
 ---
@@ -64,12 +70,14 @@ bandhanbd-server/
 
 ### Prerequisites
 
-- Node.js **18+**
-- npm
+- Node.js **18+** and npm  *(for local dev)*
+- **Docker** and **Docker Compose** *(for containerised run)*
 - MongoDB Atlas cluster
 - Stripe account (test mode)
 
-### Installation
+---
+
+### Option A — Run Locally (Node.js)
 
 ```bash
 # 1. Clone the repository
@@ -81,13 +89,128 @@ npm install
 
 # 3. Configure environment variables
 cp .env.example .env
-# Fill in your values
+# Fill in your values (see Environment Variables section)
 
-# 4. Start development server
+# 4. Start development server (hot reload)
 npm run dev
+
+# — or start the production server —
+npm start
 ```
 
-The server will run at `http://localhost:5500`.
+The server will be available at `http://localhost:5500`.
+
+---
+
+### Option B — Run with Docker
+
+#### 1. Build the image
+
+```bash
+docker build -t bandhanbd-server .
+```
+
+#### 2. Run the container
+
+```bash
+docker run -d \
+  --name bandhanbd-server \
+  -p 5500:5500 \
+  --env-file .env \
+  bandhanbd-server
+```
+
+#### 3. Check it's healthy
+
+```bash
+curl http://localhost:5500/
+```
+
+---
+
+### Option C — Run with Docker Compose *(recommended)*
+
+```bash
+# 1. Configure environment variables
+cp .env.example .env
+# Fill in your values
+
+# 2. Build and start
+docker compose up -d
+
+# 3. View live logs
+docker compose logs -f app
+
+# 4. Stop and remove containers
+docker compose down
+```
+
+The server will be available at `http://localhost:5500`.
+
+---
+
+## 🐳 Docker Details
+
+### Dockerfile
+
+The image is built from `node:18-alpine` to keep the final image size small.
+
+```dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev       # install production deps only
+
+COPY . .
+
+ENV NODE_ENV=production
+EXPOSE 5500
+
+CMD ["npm", "start"]
+```
+
+| Layer | Purpose |
+|---|---|
+| `node:18-alpine` | Minimal base — ~50 MB vs ~900 MB for the full image |
+| `npm ci --omit=dev` | Reproducible, production-only dependency install |
+| `ENV NODE_ENV=production` | Enables Express production mode |
+| `EXPOSE 5500` | Documents the port; maps via `-p` or Compose |
+
+### docker-compose.yml
+
+```yaml
+services:
+  app:
+    build: .
+    container_name: bandhanbd-server
+    ports:
+      - "5500:5500"
+    env_file:
+      - .env
+    restart: unless-stopped
+```
+
+`restart: unless-stopped` ensures the container automatically recovers from crashes and restarts after system reboots — unless you explicitly stop it.
+
+### .dockerignore
+
+The following files are excluded from the build context to keep the image lean and secure:
+
+```
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+Dockerfile
+.dockerignore
+README.md
+vercel.json
+```
+
+> ⚠️ `.env` is excluded from the image. Always pass secrets at runtime via `--env-file` or `docker compose` — never bake them into the image.
 
 ---
 
@@ -111,7 +234,7 @@ ACCESS_TOKEN_SECRET=your_strong_random_jwt_secret
 STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxx
 ```
 
-> ⚠️ Never commit `.env` to version control.
+> ⚠️ Never commit `.env` to version control. Add it to `.gitignore`.
 
 ---
 
@@ -119,7 +242,7 @@ STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxx
 
 ### Base URL
 ```
-https://true-companions-server.vercel.app
+https://bandhan-bd-server.vercel.app
 ```
 
 ### Authentication Header
@@ -374,6 +497,7 @@ If not authorised → contactEmail and mobileNumber are deleted
 - Users can only delete/modify their own resources (email cross-check)
 - Admin role verified in DB on every admin route (not just JWT claim)
 - CORS restricted to whitelisted origins
+- `.env` excluded from Docker image via `.dockerignore`
 
 ---
 
@@ -383,18 +507,18 @@ Import these into Postman or use cURL:
 
 ```bash
 # Health check
-curl https://true-companions-server.vercel.app/
+curl https://bandhan-bd-server.vercel.app/
 
 # Get a JWT
-curl -X POST https://true-companions-server.vercel.app/jwt \
+curl -X POST https://bandhan-bd-server.vercel.app/jwt \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com"}'
 
 # Get biodatas (public)
-curl "https://true-companions-server.vercel.app/biodatas?ageMin=20&ageMax=35&biodataType=Male&page=1&limit=20"
+curl "https://bandhan-bd-server.vercel.app/biodatas?ageMin=20&ageMax=35&biodataType=Male&page=1&limit=20"
 
 # Get admin stats (requires admin JWT)
-curl https://true-companions-server.vercel.app/admin/stats \
+curl https://bandhan-bd-server.vercel.app/admin/stats \
   -H "Authorization: Bearer <your_admin_token>"
 ```
 
@@ -412,7 +536,7 @@ vercel --prod
 
 Add all environment variables in the Vercel dashboard under **Project → Settings → Environment Variables**.
 
-Make sure `vercel.json` exists:
+Ensure `vercel.json` exists in the project root:
 
 ```json
 {
@@ -421,6 +545,8 @@ Make sure `vercel.json` exists:
   "routes": [{ "src": "/(.*)", "dest": "/index.js" }]
 }
 ```
+
+> ℹ️ The `Dockerfile` and `docker-compose.yml` are intended for self-hosted or VPS deployments. Vercel uses its own build pipeline and does not use Docker.
 
 ---
 
@@ -440,6 +566,7 @@ feat: add contact request approval endpoint
 fix: strip contact info from unauthenticated responses
 chore: update dependencies
 refactor: extract verifyAdmin middleware
+docker: add Dockerfile and docker-compose configuration
 ```
 
 Maintain at least **12 meaningful commits** for server-side changes.
